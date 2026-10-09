@@ -1,106 +1,89 @@
-import { promises as fs } from "fs";
-import path from "path";
-import type { Member } from "./types";
 
-const dataFile = path.join(
-  process.cwd(),
-  "data",
-  "members.json"
-);
+import "server-only";
 
-async function readMembers(): Promise<Member[]> {
-  try {
-    const file = await fs.readFile(dataFile, "utf-8");
-
-    return JSON.parse(file) as Member[];
-  } catch (error) {
-    console.error("Failed to read members data:", error);
-
-    throw new Error("Unable to load members data.");
-  }
-}
-
-async function writeMembers(
-  members: Member[]
-): Promise<void> {
-  try {
-    await fs.writeFile(
-      dataFile,
-      JSON.stringify(members, null, 2),
-      "utf-8"
-    );
-  } catch (error) {
-    console.error("Failed to write members data:", error);
-
-    throw new Error("Unable to save members data.");
-  }
-}
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { Member } from "@/lib/types";
 
 export async function getMembers(): Promise<Member[]> {
-  return readMembers();
+  const { data, error } = await supabaseAdmin
+    .from("members")
+    .select("*")
+    .order("joined", { ascending: false });
+
+  if (error) {
+    console.error("Failed to load members:", error);
+    throw new Error("Unable to load members data.");
+  }
+
+  return (data ?? []) as Member[];
 }
 
 export async function getMemberById(
   id: string
 ): Promise<Member | null> {
-  const members = await readMembers();
+  const { data, error } = await supabaseAdmin
+    .from("members")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
 
-  return (
-    members.find((member) => member.id === id) ?? null
-  );
+  if (error) {
+    console.error("Failed to load member:", error);
+    throw new Error("Unable to load member data.");
+  }
+
+  return data as Member | null;
 }
 
 export async function createMember(
   member: Member
 ): Promise<Member> {
-  const members = await readMembers();
+  const { data, error } = await supabaseAdmin
+    .from("members")
+    .insert(member)
+    .select("*")
+    .single();
 
-  members.push(member);
+  if (error) {
+    console.error("Failed to create member:", error);
+    throw new Error("Unable to save member.");
+  }
 
-  await writeMembers(members);
-
-  return member;
+  return data as Member;
 }
 
 export async function updateMember(
   id: string,
   updates: Partial<Member>
 ): Promise<Member | null> {
-  const members = await readMembers();
+  const { data, error } = await supabaseAdmin
+    .from("members")
+    .update(updates)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
 
-  const index = members.findIndex(
-    (member) => member.id === id
-  );
-
-  if (index === -1) {
-    return null;
+  if (error) {
+    console.error("Failed to update member:", error);
+    throw new Error("Unable to update member.");
   }
 
-  members[index] = {
-    ...members[index],
-    ...updates,
-    id,
-  };
-
-  await writeMembers(members);
-
-  return members[index];
+  return data as Member | null;
 }
 
 export async function deleteMember(
   id: string
 ): Promise<boolean> {
-  const members = await readMembers();
+  const { data, error } = await supabaseAdmin
+    .from("members")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
-  const filteredMembers = members.filter(
-    (member) => member.id !== id
-  );
-
-  if (filteredMembers.length === members.length) {
-    return false;
+  if (error) {
+    console.error("Failed to delete member:", error);
+    throw new Error("Unable to delete member.");
   }
 
-  await writeMembers(filteredMembers);
-
-  return true;
+  return (data?.length ?? 0) > 0;
 }
